@@ -13,15 +13,13 @@ import jwt
 load_dotenv() # Carrega as variáveis de ambiente do arquivo .env para o ambiente de execução do phyton. 
 
 # 1. Configuração do Firebase
-if os.getenv('VERCEL'):
-    #onlien na vercel 
-    cred=credentials.Certificate(json.loads(os.getenv('FIREBASE_CREDENTIALS'))) #loads puxa  arquivo, ja o load puxa uma string 
-else:
-    #localmente
-    cred=credentials.Certificate("firebase.json")
+if not firebase_admin._apps:
+    if os.getenv('VERCEL'):
+        cred = credentials.Certificate(json.loads(os.getenv('FIREBASE_CREDENTIALS')))
+    else:
+        cred = credentials.Certificate("firebase.json")
+    firebase_admin.initialize_app(cred)
 
-
-firebase_admin.initialize_app(cred)
 db = firestore.client()
 
 # 2. Configuração do Flask
@@ -144,59 +142,67 @@ def listar_todos_alunos():
 def atualizar_aluno_total(id):
     dados = request.get_json()
     
-    # No PUT, geralmente validamos se todos os campos obrigatórios foram enviados
+    # Validação rigorosa: No PUT todos os campos são obrigatórios
     if not dados or not all(k in dados for k in ("nome", "cpf", "status")):
         return jsonify({"erro": "Dados incompletos para atualização total (PUT)."}), 400
 
     try:
-        # Busca o documento pelo campo 'id' numérico
-        docs = db.collection('alunos').where('id', '==', id).limit(1).get()
-
-        if len(docs) == 0:
-            return jsonify({"erro": "Aluno não encontrado"}), 404
-        
-        # Pega a referência do primeiro documento encontrado
-        doc_ref = docs[0].reference 
-
-        # No PUT, atualizamos todos os campos obrigatórios
-        doc_ref.update({
-            "nome": dados.get("nome"),
-            "cpf": dados.get("cpf"),
-            "status": dados.get("status")
-        })
-        
-        return jsonify({"mensagem": "Aluno atualizado com sucesso (PUT)!"}), 200
-
-    except :
-        return jsonify({"erro": "Erro interno ao atualizar o aluno."}), 500
-
-@app.route("/alunos/<int:id>", methods=['PATCH'])
-@token_obrigatorio
-def atualizar_aluno(id):
-    dados = request.get_json()
-    if not dados or ('nome' not in dados and 'cpf' not in dados and 'status' not in dados):
-        return jsonify({"erro": "Nenhum dado para atualizar."}), 400
-
-    try:
-        docs = db.collection('alunos').where('id', '==', id).limit(1).get()
+        # Busca garantindo que o ID seja tratado como INT
+        docs = db.collection('alunos').where('id', '==', int(id)).limit(1).get()
 
         if not docs:
             return jsonify({"erro": "Aluno não encontrado"}), 404
         
-        doc_ref=db.collection('alunos').document(docs[0].id)
+        doc_ref = docs[0].reference 
+
+        # Atualiza o documento forçando os tipos corretos
+        doc_ref.update({
+            "nome": str(dados.get("nome")).strip(),
+            "cpf": str(dados.get("cpf")).strip(),
+            "status": str(dados.get("status")).upper()
+        })
+        
+        return jsonify({"mensagem": "Aluno atualizado com sucesso (PUT)!"}), 200
+
+    except Exception as e:
+        return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
+
+# ========================================================================
+#   ALUNOS: ATUALIZAÇÃO PARCIAL (PATCH)
+# ========================================================================
+
+@app.route("/alunos/<int:id>", methods=['PATCH'])
+@token_obrigatorio
+def atualizar_aluno_parcial(id):
+    dados = request.get_json()
+    if not dados:
+        return jsonify({"erro": "Nenhum dado enviado."}), 400
+
+    try:
+        docs = db.collection('alunos').where('id', '==', int(id)).limit(1).get()
+
+        if not docs:
+            return jsonify({"erro": "Aluno não encontrado"}), 404
+        
+        doc_ref = docs[0].reference
         update_aluno = {}
+
+        # Só adiciona ao dicionário o que foi enviado no JSON
         if 'nome' in dados:
-            update_aluno['nome'] = dados['nome']
+            update_aluno['nome'] = str(dados['nome']).strip()
         if 'cpf' in dados:
-            update_aluno['cpf'] = dados['cpf']
+            update_aluno['cpf'] = str(dados['cpf']).strip()
         if 'status' in dados:
-            update_aluno['status'] = dados['status']
+            update_aluno['status'] = str(dados['status']).upper()
         
+        if not update_aluno:
+            return jsonify({"erro": "Campos inválidos para atualização."}), 400
+
         doc_ref.update(update_aluno)
-        return jsonify({"mensagem": "Sucesso!"}), 200
-    except:
-        return jsonify({"erro": "Erro ao atualizar."}), 500
+        return jsonify({"mensagem": "Sucesso na atualização parcial (PATCH)!"}), 200
         
+    except Exception as e:
+        return jsonify({"erro": f"Erro ao atualizar: {str(e)}"}), 500
         
        
 
