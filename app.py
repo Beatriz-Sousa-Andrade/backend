@@ -26,6 +26,7 @@ db = firestore.client()
 
 # 2. Configuração do Flask
 app = Flask(__name__)
+CORS(app)
 # versão openapi 
 app.config['SWAGGER']={
     'openapi': '3.0.3'
