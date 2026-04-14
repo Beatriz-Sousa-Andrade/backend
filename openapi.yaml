@@ -1,0 +1,148 @@
+openapi: 3.0.3
+info:
+  title: API de Gestão de Alunos
+  description: API para controle de acesso e gerenciamento de alunos usando Flask, Firebase e autenticação JWT.
+  version: "1.0.0"
+  contact:
+    name: Beatriz e Mayara - SENAI DS 2026
+
+servers:
+  - url: http://localhost:5000
+
+paths:
+  /catraca:
+    post:
+      summary: Consulta acesso do aluno
+      description: Rota utilizada pelo tablet da portaria para validar entrada via CPF.
+      tags:
+        - Catraca
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cpf
+              properties:
+                cpf:
+                  type: string
+                  example: "12345678900"
+      responses:
+        "200":
+          description: Acesso autorizado
+        "404":
+          description: CPF não cadastrado ou BLOQUEADO
+
+  /alunos:
+    get:
+      summary: Lista todos os alunos
+      security:
+        - bearerAuth: []
+      tags:
+        - Administrativo
+      responses:
+        "200":
+          description: Lista de alunos cadastrados
+        "401":
+          description: Token de acesso não enviado ou inválido
+
+    post:
+      summary: Cadastra um novo aluno
+      security:
+        - bearerAuth: []
+      tags:
+        - Administrativo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - nome
+                - cpf
+              properties:
+                nome:
+                  type: string
+                  example: "Fulano de Tal"
+                cpf:
+                  type: string
+                  example: "12345678900"
+                status:
+                  type: string
+                  example: "ATIVO"
+                  default: "ATIVO"
+      responses:
+        "201":
+          description: Aluno salvo com sucesso
+        "400":
+          description: Dados incompletos
+        "401":
+          description: Não autorizado
+
+  /alunos/{id}:
+    put:
+      summary: Atualiza totalmente um aluno por ID
+      security:
+        - bearerAuth: []
+      tags:
+        - Administrativo
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                nome:
+                  type: string
+                cpf:
+                  type: string
+                status:
+                  type: string
+      responses:
+        "200":
+          description: Sucesso na atualização
+        "404":
+          description: Aluno não encontrado
+        "500":
+          description: Erro ao atualizar no banco
+
+  /alunos/deletar:
+    delete:
+      summary: Remove um aluno pelo CPF
+      security:
+        - bearerAuth: []
+      tags:
+        - Administrativo
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required:
+                - cpf
+              properties:
+                cpf:
+                  type: string
+                  example: "12345678900"
+      responses:
+        "200":
+          description: Excluído com sucesso
+        "404":
+          description: Não encontrado
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
