@@ -26,7 +26,7 @@ db = firestore.client()
 
 # 2. Configuração do Flask
 app = Flask(__name__)
-CORS(app, origins="*") # Permite que qualquer origem acesse a API. Em produção, é recomendado restringir isso para domínios específicos.
+CORS(app, origins="*") # Permite que qualquer origem acesse a API.
 # versão openapi 
 app.config['SWAGGER']={
     'openapi': '3.0.3'
@@ -72,12 +72,16 @@ def login():
 #   APLICAÇÃO 1: CATRACA tablet da portaria
 # ========================================================================
 
-@app.route("/catraca", methods=['POST'])
+@app.route("/catraca", methods=['POST']) # Mudou para POST
 def consultar_acesso():
-    dados = request.get_json()
+    dados = request.get_json() # Agora o Flask vai conseguir ler o JSON
+    
+    if not dados or "cpf" not in dados:
+        return jsonify({"erro": "CPF não informado no corpo da requisição"}), 400
+        
     cpf_recebido = dados.get("cpf")
 
-    resultado_busca = db.collection('alunos').where('cpf', '==', cpf_recebido).get()
+    resultado_busca = db.collection('alunos').where('cpf', '==', str(cpf_recebido)).get()
 
     aluno_encontrado = None
     for item in resultado_busca:
