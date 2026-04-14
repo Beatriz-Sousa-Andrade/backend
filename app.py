@@ -106,6 +106,17 @@ def cadastrar_aluno():
         return jsonify({"erro": "Dados incompletos."}), 400
     
     try:
+        cpf_novo = str(dados.get("cpf")).strip()
+
+        
+        # Faz uma busca na coleção 'alunos' onde o campo 'cpf' é igual ao enviado
+        conferir_cpf = db.collection('alunos').where('cpf', '==', cpf_novo).get()
+        
+        # Se a lista não estiver vazia, significa que o CPF já está cadastrado
+        if len(conferir_cpf) > 0:
+            return jsonify({"erro": "Este CPF já está cadastrado no sistema."}), 409 # 409 Conflict é um código de status HTTP que indica que a requisição não pôde ser concluída devido a um conflito com o estado atual do recurso. No caso do cadastro de alunos, isso é apropriado para indicar que o CPF já existe e não pode ser duplicado.
+        
+
         # Lógica do contador automático
         contador_ref = db.collection('contador').document('controle_de_id')
         contador_doc = contador_ref.get()
@@ -120,13 +131,14 @@ def cadastrar_aluno():
 
         db.collection('alunos').add({
             "id": novo_id,
-            "nome": dados.get("nome"),
-            "cpf": dados.get("cpf"),
+            "nome": str(dados.get("nome")).strip(),
+            "cpf": cpf_novo,
             "status": dados.get("status", "ATIVO") # Padrão é ATIVO se não enviar
         })
         return jsonify({"mensagem": "Aluno salvo!", "id": novo_id}), 201
-    except:
-        return jsonify({"erro": "Erro ao salvar no banco."}), 500
+    except Exception as e:
+        return jsonify({"erro": f"Erro ao salvar no banco: {str(e)}"}), 500
+    
 
 @app.route("/alunos", methods=['GET'])
 @token_obrigatorio
