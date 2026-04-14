@@ -26,7 +26,7 @@ db = firestore.client()
 
 # 2. Configuração do Flask
 app = Flask(__name__)
-CORS(app)
+CORS(app, origins="*") # Permite que qualquer origem acesse a API. Em produção, é recomendado restringir isso para domínios específicos.
 # versão openapi 
 app.config['SWAGGER']={
     'openapi': '3.0.3'
