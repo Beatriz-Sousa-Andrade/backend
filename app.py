@@ -106,34 +106,38 @@ def cadastrar_aluno():
         return jsonify({"erro": "Dados incompletos."}), 400
     
     try:
+        # Limpa espaços e garante que é string
         cpf_novo = str(dados.get("cpf")).strip()
 
-        
+        # Verifica se tem 11 dígitos e se todos são números
+        if len(cpf_novo) != 11 or not cpf_novo.isdigit():
+            return jsonify({
+                "erro": "CPF inválido. O campo deve conter exatamente 11 dígitos numéricos, sem letras ou símbolos."
+            }), 400
+        # -----------------------------
+
         # Faz uma busca na coleção 'alunos' onde o campo 'cpf' é igual ao enviado
         conferir_cpf = db.collection('alunos').where('cpf', '==', cpf_novo).get()
         
-        # Se a lista não estiver vazia, significa que o CPF já está cadastrado
         if len(conferir_cpf) > 0:
-            return jsonify({"erro": "Este CPF já está cadastrado no sistema."}), 409 # 409 Conflict é um código de status HTTP que indica que a requisição não pôde ser concluída devido a um conflito com o estado atual do recurso. No caso do cadastro de alunos, isso é apropriado para indicar que o CPF já existe e não pode ser duplicado.
-        
+            return jsonify({"erro": "Este CPF já está cadastrado no sistema."}), 409 
 
         # Lógica do contador automático
         contador_ref = db.collection('contador').document('controle_de_id')
         contador_doc = contador_ref.get()
         
-        # Se o contador não existir, começa do 0
         ultimo_id = 0
         if contador_doc.exists:
             ultimo_id = contador_doc.to_dict().get('ultimo_id', 0)
         
         novo_id = ultimo_id + 1
-        contador_ref.set({'ultimo_id': novo_id}) # Atualiza o contador
+        contador_ref.set({'ultimo_id': novo_id}) 
 
         db.collection('alunos').add({
             "id": novo_id,
             "nome": str(dados.get("nome")).strip(),
             "cpf": cpf_novo,
-            "status": dados.get("status", "ATIVO") # Padrão é ATIVO se não enviar
+            "status": dados.get("status", "ATIVO") 
         })
         return jsonify({"mensagem": "Aluno salvo!", "id": novo_id}), 201
     except Exception as e:
