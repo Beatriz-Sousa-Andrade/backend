@@ -121,13 +121,12 @@ def consultar_acesso():
 
 @app.route("/alunos", methods=['GET'])
 @token_obrigatorio
-def listar_alunos():
-    try:
-        alunos_ref = db.collection('alunos').get()
-        lista_alunos = [doc.to_dict() for doc in alunos_ref]
-        return jsonify(lista_alunos), 200
-    except Exception as e:
-        return jsonify({"erro": f"Erro ao listar: {str(e)}"}), 500
+def listar_todos_alunos():
+    lista = []
+    todos_os_docs = db.collection('alunos').get()
+    for doc in todos_os_docs:
+        lista.append(doc.to_dict())
+    return jsonify(lista), 200
 
 # ========================================================================
 #   APLICAÇÃO 3: FRONTEND
