@@ -70,28 +70,50 @@ def login():
 #   APLICAÇÃO 1: CATRACA tablet da portaria
 # ========================================================================
 
-@app.route("/catraca", methods=['POST']) # Mudou para POST
+@app.route("/catraca", methods=['POST'])
 def consultar_acesso():
-    dados = request.get_json() # Agora o Flask vai conseguir ler o JSON
-    
-    if not dados or "cpf" not in dados:
-        return jsonify({"erro": "CPF não informado no corpo da requisição"}), 400
+    try:
+        # Tenta ler o JSON enviado
+        dados = request.get_json()
         
-    cpf_recebido = dados.get("cpf")
+        # 1. Validação de entrada
+        if not dados or "cpf" not in dados:
+            return jsonify({"erro": "CPF não informado no corpo da requisição"}), 400
+            
+        cpf_recebido = str(dados.get("cpf")).strip()
 
-    resultado_busca = db.collection('alunos').where('cpf', '==', str(cpf_recebido)).get()
+        # 2. Busca no Firebase
+        # Tentamos a conexão aqui. Se o banco estiver fora, ele pula para o 'except'
+        resultado_busca = db.collection('alunos').where('cpf', '==', cpf_recebido).get()
 
-    aluno_encontrado = None
-    for item in resultado_busca:
-        aluno_encontrado = item.to_dict()
+        aluno_encontrado = None
+        for item in resultado_busca:
+            aluno_encontrado = item.to_dict()
 
-    if not aluno_encontrado:
-        return jsonify({"status": "BLOQUEADO", "mensagem": "CPF não cadastrado"}), 404
+        # 3. Se não encontrar o aluno, retorna 404 de forma limpa (não é erro de sistema)
+        if not aluno_encontrado:
+            return jsonify({
+                "status": "BLOQUEADO", 
+                "mensagem": "CPF não cadastrado"
+            }), 404
 
-    return jsonify({
-        "nome": aluno_encontrado.get("nome"),
-        "status": aluno_encontrado.get("status")
-    }), 200
+        # 4. Retorno de sucesso com os dados do aluno
+        return jsonify({
+            "nome": aluno_encontrado.get("nome"),
+            "status": aluno_encontrado.get("status"),
+            "mensagem": "Acesso Liberado!"
+        }), 200
+
+    except Exception as e:
+        # Este log aparece no seu terminal para você saber o que houve
+        print(f"ERRO DE CONEXÃO/SISTEMA: {e}")
+        
+        # SÓ aqui ele retorna a mensagem de sistema offline/erro de banco
+        return jsonify({
+            "status": "ERRO_SISTEMA",
+            "mensagem": "Sistema temporariamente offline ou falha de comunicação.",
+            "detalhe": "Verifique a conexão com o Firebase"
+        }), 503
 
 # ========================================================================
 #   APLICAÇÃO 3: FRONTEND
@@ -240,8 +262,30 @@ def deletar_aluno():
 
     return jsonify({"mensagem": "Excluído!"}), 200
 
+
+# ========================================================================
+#   ZONA DE ERROS: TRATAMENTO DE EXCEÇÕES PARA EVITAR TRAVAMENTO INFINITO E FORNECER RESPOSTAS ÚTEIS
+# ========================================================================
+
+
+@app.errorhandler(500)
+def erro_interno(e):
+    return jsonify({
+        "status": "OFFLINE",
+        "erro": "Erro interno no servidor ou falha de conexão com o banco de dados.",
+        "mensagem": "Verifique a conexão de rede ou o status do serviço Firebase."
+    }), 500
+
+@app.errorhandler(Exception)
+def lidar_com_excecao_generica(e):
+    # Captura qualquer erro não esperado e evita travamento infinito
+    return jsonify({
+        "status": "ERRO",
+        "erro": str(e),
+        "mensagem": "A requisição falhou. Tente novamente em instantes."
+    }), 500
+
 if __name__ == '__main__':
     app.run(debug=True)
-      
 
 
