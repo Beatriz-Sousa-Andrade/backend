@@ -121,18 +121,29 @@ def cadastrar_aluno():
    
     try:
         cpf_entrada = str(dados.get("cpf")).strip()
+        
+        # Bloqueia se houver letras
         if any(char.isalpha() for char in cpf_entrada):
             return jsonify({"erro": "CPF inválido. Não pode conter letras."}), 400
 
+        # Limpa para ter apenas números (ex: 12345678901)
         cpf_limpo = ''.join(filter(str.isdigit, cpf_entrada))
 
         if len(cpf_limpo) != 11:
             return jsonify({"erro": "CPF deve conter 11 números."}), 400
 
+        # --- LÓGICA DE UNICIDADE ---
+        # Busca no Firestore se já existe algum documento com esse CPF exato
         conferir_cpf = db.collection('alunos').where('cpf', '==', cpf_limpo).get()
+        
         if len(conferir_cpf) > 0:
-            return jsonify({"erro": "Este CPF já está cadastrado."}), 409
+            # Se encontrar algo, ele impede o cadastro. 
+            # Se o aluno tivesse sido deletado antes, o 'len' seria 0 e ele passaria.
+            return jsonify({
+                "erro": "Este CPF já está cadastrado no sistema. Exclua o cadastro anterior para cadastrar novamente."
+            }), 409 
 
+        # --- PROSSEGUE COM O CADASTRO ---
         contador_ref = db.collection('contador').document('controle_de_id')
         contador_doc = contador_ref.get()
         ultimo_id = contador_doc.to_dict().get('ultimo_id', 0) if contador_doc.exists else 0
@@ -147,7 +158,8 @@ def cadastrar_aluno():
             "status": str(dados.get("status", "ATIVO")).upper()
         })
 
-        return jsonify({"mensagem": "Aluno salvo!", "id": novo_id}), 201
+        return jsonify({"mensagem": "Aluno salvo com sucesso!", "id": novo_id}), 201
+
     except Exception as e:
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
