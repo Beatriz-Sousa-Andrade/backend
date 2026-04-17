@@ -1,0 +1,113 @@
+Aqui está o arquivo **README.md** formatado conforme o modelo solicitado, adaptado para a sua API de Gestão de Academia e utilizando a estrutura de arquivos apresentada na imagem.
+
+-----
+
+# Curso Técnico de Desenvolvimento de Sistemas - Senai Itapeva
+
+## Sistema de Gestão de Academia - API de Controle de Alunos
+
+**Descrição:** Esta API é uma solução robusta para o gerenciamento de alunos e controle de acesso (catraca) em academias. Desenvolvida com Flask e Firebase, a aplicação oferece um sistema completo de CRUD (Criação, Leitura, Atualização e Deleção) protegido por autenticação JWT, além de uma rota dedicada para dispositivos de portaria.
+
+-----
+
+## Índice
+
+  * Funcionalidades
+  * Tecnologias Utilizadas
+  * Estrutura do Projeto
+  * Como Utilizar
+  * Autores
+  * Licença
+
+-----
+
+## Funcionalidades
+
+### Módulo 1 - Controle de Acesso (Catraca)
+
+  * **Consulta de Status:** Verificação em tempo real da situação do aluno (ATIVO/BLOQUEADO) através do CPF[cite: 1].
+  * **Tratamento de Erros:** Respostas específicas para CPFs não cadastrados e validações de segurança[cite: 1].
+  * **Modo Offline:** Sistema preparado para retornar status de erro amigável em caso de falha de conexão com o banco de dados Firebase[cite: 1].
+
+### Módulo 2 - Gestão Administrativa (CRUD)
+
+  * **Cadastro de Alunos:** Inclusão de novos alunos com geração automática de ID incremental e validação rigorosa de CPF (apenas 11 dígitos numéricos)[cite: 1].
+  * **Listagem Geral:** Visualização de todos os alunos matriculados no sistema[cite: 1].
+  * **Atualização Flexível:** Suporte a atualização total (PUT) ou parcial (PATCH) dos dados do aluno[cite: 1].
+  * **Remoção Segura:** Exclusão de registros baseada no CPF[cite: 1].
+
+### Módulo 3 - Segurança e Documentação
+
+  * **Autenticação JWT:** Proteção de rotas administrativas exigindo Token Bearer para acesso[cite: 1].
+  * **Documentação Swagger:** Interface interativa via Swagger/Flasgger para teste e visualização dos endpoints[cite: 1].
+  * **Configuração de Ambiente:** Uso de variáveis de ambiente (.env) para proteção de chaves de API e credenciais[cite: 1].
+
+-----
+
+## Tecnologias Utilizadas
+
+  * **Python / Flask:** Framework principal para construção da API[cite: 1].
+  * **Firebase Firestore:** Banco de dados NoSQL em nuvem para armazenamento de dados[cite: 1].
+  * **PyJWT:** Biblioteca para geração e validação de tokens de autenticação[cite: 1].
+  * **Flasgger / OpenAPI:** Documentação padronizada dos endpoints[cite: 1].
+  * **CORS:** Gerenciamento de permissões para acesso de diferentes origens[cite: 1].
+
+-----
+
+## Estrutura do Projeto
+
+```text
+BACKEND/
+├── __pycache__/        # Arquivos de cache do Python
+├── .env                # Variáveis de ambiente (Segredos e Chaves)
+├── .gitignore          # Arquivos ignorados pelo Git
+├── app.py              # Arquivo principal com as rotas da API
+├── auth.py             # Lógica de autenticação e decorators JWT
+├── firebase.json       # Chave de conta de serviço do Firebase
+├── openapi.yaml        # Especificação da documentação Swagger
+├── requirements.txt    # Lista de dependências do projeto
+└── vercel.json         # Configurações para deploy na Vercel
+```
+
+-----
+
+## Como Utilizar
+
+1.  **Instalação de Dependências:**
+    No terminal, execute:
+
+    ```bash
+    pip install -r requirements.txt
+    ```
+
+2.  **Configuração do Firebase:**
+
+      * [cite_start]Certifique-se de ter o arquivo `firebase.json` na raiz do projeto[cite: 1].
+      * [cite_start]Configure o arquivo `.env` com sua `SECRET_KEY` e credenciais de administrador[cite: 1].
+
+3.  **Execução da API:**
+    Inicie o servidor local:
+
+    ```bash
+    python app.py
+    ```
+
+4.  **Acesso aos Módulos:**
+
+      * **Documentação:** Acesse `http://localhost:5000/apidocs` para testar as rotas[cite: 1].
+      * **Login:** Realize o POST em `/login` para obter seu Token JWT[cite: 1].
+      * **Catraca:** Utilize a rota `/catraca` via POST enviando o JSON `{"cpf": "123..."}` sem necessidade de token[cite: 1].
+      * **Gestão:** Para rotas `/alunos`, inclua o token no Header da requisição como `Authorization: Bearer SEU_TOKEN`[cite: 1].
+
+-----
+
+## Autores
+
+  * **Beatriz Sousa de Andrade** - *Desenvolvedora Backend* - [beatriz.sandrade.senai@gmail.com](mailto:beatriz.sandrade.senai@gmail.com)
+  * **Mayara** - *Desenvolvedora Full-Stack* - [mayara.alves.senai@gmail.com](mailto:mayara.alves.senai@gmail.com)
+
+-----
+
+## Licença
+
+Este projeto está licenciado sob a Licença MIT.
