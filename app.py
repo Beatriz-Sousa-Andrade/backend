@@ -117,6 +117,18 @@ def consultar_acesso():
             "mensagem": "Falha na comunicação com o banco de dados."
         }), 503
 
+
+
+@app.route("/alunos", methods=['GET'])
+@token_obrigatorio
+def listar_alunos():
+    try:
+        alunos_ref = db.collection('alunos').get()
+        lista_alunos = [doc.to_dict() for doc in alunos_ref]
+        return jsonify(lista_alunos), 200
+    except Exception as e:
+        return jsonify({"erro": f"Erro ao listar: {str(e)}"}), 500
+
 # ========================================================================
 #   APLICAÇÃO 3: FRONTEND
 # ========================================================================
