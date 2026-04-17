@@ -166,50 +166,132 @@ def cadastrar_aluno():
 # ========================================================================
 #   ATUALIZAÇÃO (PUT)
 # ========================================================================
+# ========================================================================
+#   CADASTRO (POST) - Proteção contra duplicatas
+# ========================================================================
+@app.route("/alunos", methods=['POST'])
+@token_obrigatorio
+def cadastrar_aluno():
+    dados = request.get_json()
+    if not dados or 'cpf' not in dados or 'nome' not in dados:
+        return jsonify({"erro": "Dados incompletos."}), 400
+   
+    try:
+        cpf_entrada = str(dados.get("cpf")).strip()
+        cpf_limpo = ''.join(filter(str.isdigit, cpf_entrada))
+
+        if len(cpf_limpo) != 11:
+            return jsonify({"erro": "CPF deve conter 11 números."}), 400
+
+        # VERIFICAÇÃO: Se o CPF já existe em qualquer lugar
+        existente = db.collection('alunos').where('cpf', '==', cpf_limpo).get()
+        if len(existente) > 0:
+            return jsonify({"erro": "Este CPF já está cadastrado em outro aluno."}), 409
+
+        # Prossegue com o cadastro normal
+        contador_ref = db.collection('contador').document('controle_de_id')
+        contador_doc = contador_ref.get()
+        ultimo_id = contador_doc.to_dict().get('ultimo_id', 0) if contador_doc.exists else 0
+        novo_id = ultimo_id + 1
+        contador_ref.set({'ultimo_id': novo_id})
+
+        db.collection('alunos').add({
+            "id": int(novo_id),
+            "nome": str(dados.get("nome")).strip(),
+            "cpf": cpf_limpo,
+            "status": str(dados.get("status", "ATIVO")).upper()
+        })
+        return jsonify({"mensagem": "Aluno salvo!", "id": novo_id}), 201
+    except Exception as e:
+        return jsonify({"erro": str(e)}), 500
+
+# ========================================================================
+#   EDIÇÃO (PUT) - Bloqueia se tentar mudar para um CPF de outro aluno
+# ========================================================================
 @app.route("/alunos/<int:id>", methods=['PUT'])
 @token_obrigatorio
 def atualizar_aluno_total(id):
     dados = request.get_json()
     try:
-        cpf_limpo = ''.join(filter(str.isdigit, str(dados.get("cpf"))))
+        cpf_novo = ''.join(filter(str.isdigit, str(dados.get("cpf"))))
+        
+        # 1. Busca o aluno que estamos editando
         docs = db.collection('alunos').where('id', '==', int(id)).get()
-
         if not docs:
-            return jsonify({"erro": f"Aluno com ID {id} não encontrado"}), 404
-       
-        doc_ref = docs[0].reference
-        doc_ref.update({
+            return jsonify({"erro": "Aluno não encontrado"}), 404
+        
+        aluno_atual_ref = docs[0].reference
+
+        # 2. VERIFICAÇÃO DE SEGURANÇA:
+        # Busca se esse "novo CPF" já pertence a OUTRO aluno (ID diferente)
+        outros_com_mesmo_cpf = db.collection('alunos').where('cpf', '==', cpf_novo).get()
+        
+        for doc in outros_com_mesmo_cpf:
+            if doc.to_dict().get('id') != int(id):
+                # Se achou alguém com esse CPF e o ID não é o mesmo que estou editando...
+                return jsonify({"erro": "Erro: Já existe outro aluno cadastrado com este CPF."}), 409
+
+        # 3. Se passou pela verificação, atualiza
+        aluno_atual_ref.update({
             "nome": str(dados.get("nome")).strip(),
-            "cpf": cpf_limpo,
+            "cpf": cpf_novo,
             "status": str(dados.get("status")).upper()
         })
-        return jsonify({"mensagem": "Aluno atualizado!"}), 200
+        return jsonify({"mensagem": "Aluno atualizado com sucesso!"}), 200
+
     except Exception as e:
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
 # ========================================================================
 #   ATUALIZAÇÃO PARCIAL (PATCH)
 # ========================================================================
+# ========================================================================
+#   ATUALIZAÇÃO PARCIAL (PATCH) - Com validação de CPF Único
+# ========================================================================
 @app.route("/alunos/<int:id>", methods=['PATCH'])
 @token_obrigatorio
 def atualizar_aluno_parcial(id):
     dados = request.get_json()
     try:
+        # 1. Busca o aluno que está sendo editado
         docs = db.collection('alunos').where('id', '==', int(id)).limit(1).get()
         if not docs:
             return jsonify({"erro": "Aluno não encontrado"}), 404
        
         doc_ref = docs[0].reference
         update_aluno = {}
-        if 'nome' in dados: update_aluno['nome'] = str(dados['nome']).strip()
-        if 'cpf' in dados: update_aluno['cpf'] = ''.join(filter(str.isdigit, str(dados['cpf'])))
-        if 'status' in dados: update_aluno['status'] = str(dados['status']).upper()
-       
-        doc_ref.update(update_aluno)
-        return jsonify({"mensagem": "Sucesso no PATCH!"}), 200
-    except Exception as e:
-        return jsonify({"erro": str(e)}), 500
 
+        # 2. Se o CPF estiver sendo alterado, verifica se já existe em outro registro
+        if 'cpf' in dados:
+            cpf_novo = ''.join(filter(str.isdigit, str(dados['cpf'])))
+            
+            # Validação de tamanho
+            if len(cpf_novo) != 11:
+                return jsonify({"erro": "CPF deve conter 11 números."}), 400
+
+            # Busca se esse CPF já pertence a OUTRO ID
+            outros_com_cpf = db.collection('alunos').where('cpf', '==', cpf_novo).get()
+            for doc in outros_com_cpf:
+                if doc.to_dict().get('id') != int(id):
+                    return jsonify({"erro": "Erro: Este CPF já está em uso por outro aluno."}), 409
+            
+            update_aluno['cpf'] = cpf_novo
+
+        # 3. Processa os demais campos
+        if 'nome' in dados: 
+            update_aluno['nome'] = str(dados['nome']).strip()
+        if 'status' in dados: 
+            update_aluno['status'] = str(dados['status']).upper()
+       
+        # 4. Executa a atualização apenas se houver campos para mudar
+        if update_aluno:
+            doc_ref.update(update_aluno)
+            return jsonify({"mensagem": "Campos atualizados com sucesso!"}), 200
+        else:
+            return jsonify({"mensagem": "Nenhuma alteração enviada."}), 200
+
+    except Exception as e:
+        return jsonify({"erro": f"Erro no PATCH: {str(e)}"}), 500
 # ========================================================================
 #   EXCLUIR (DELETE)
 # ========================================================================
