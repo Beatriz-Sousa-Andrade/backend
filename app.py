@@ -75,26 +75,45 @@ def consultar_acesso():
     try:
         dados = request.get_json()
         
+        # 1. Validação se o JSON ou o campo CPF existem
         if not dados or "cpf" not in dados:
-            return jsonify({"erro": "CPF não informado"}), 400
+            return jsonify({"erro": "Corpo da requisição inválido ou CPF ausente"}), 400
             
+        # 2. Tratamento do CPF (remove espaços e garante que é string)
         cpf_recebido = str(dados.get("cpf")).strip()
 
-        # O Firebase SDK não tem um parâmetro 'timeout' direto no .get() 
-        # mas podemos envolver a busca em um bloco de try para capturar falhas de rede
+        # 3. Busca no Firestore
+        # Importante: Onde está 'cpf', deve ser exatamente o nome do campo no seu banco
         resultado_busca = db.collection('alunos').where('cpf', '==', cpf_recebido).get()
 
         aluno_encontrado = None
         for item in resultado_busca:
             aluno_encontrado = item.to_dict()
 
+        # 4. Verifica se o aluno existe
         if not aluno_encontrado:
-            return jsonify({"status": "BLOQUEADO", "mensagem": "CPF não cadastrado"}), 404
+            return jsonify({
+                "status": "BLOQUEADO", 
+                "mensagem": "CPF não cadastrado no sistema."
+            }), 404
 
+        # 5. Retorno de Sucesso
         return jsonify({
             "nome": aluno_encontrado.get("nome"),
-            "status": aluno_encontrado.get("status")
+            "status": aluno_encontrado.get("status"),
+            "mensagem": "Acesso Liberado!"
         }), 200
+
+    except Exception as e:
+        # Esse print vai aparecer no seu terminal do VS Code. 
+        # Ele te dirá exatamente QUAL erro está acontecendo (Ex: erro de conexão, erro de digitação, etc)
+        print(f"ERRO NA CATRACA: {e}")
+        
+        return jsonify({
+            "status": "ERRO_SISTEMA",
+            "mensagem": "Falha na comunicação com o banco de dados.",
+            "detalhe": str(e)
+        }), 500
 
     except Exception as e:
         # Caso o Firebase esteja offline ou a internet do servidor caia
