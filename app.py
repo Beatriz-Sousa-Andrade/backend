@@ -206,7 +206,7 @@ def cadastrar_aluno():
         return jsonify({"erro": str(e)}), 500
 
 # ========================================================================
-#   EDIÇÃO (PUT) - Bloqueia se tentar mudar para um CPF de outro aluno
+#   EDIÇÃO (PUT) 
 # ========================================================================
 @app.route("/alunos/<int:id>", methods=['PUT'])
 @token_obrigatorio
@@ -245,9 +245,7 @@ def atualizar_aluno_total(id):
 # ========================================================================
 #   ATUALIZAÇÃO PARCIAL (PATCH)
 # ========================================================================
-# ========================================================================
-#   ATUALIZAÇÃO PARCIAL (PATCH) - Com validação de CPF Único
-# ========================================================================
+
 @app.route("/alunos/<int:id>", methods=['PATCH'])
 @token_obrigatorio
 def atualizar_aluno_parcial(id):
