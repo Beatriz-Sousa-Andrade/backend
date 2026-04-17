@@ -15,7 +15,9 @@ load_dotenv()
 # 1. Configuração do Firebase
 if not firebase_admin._apps:
     if os.getenv('VERCEL'):
-        cred = credentials.Certificate(json.loads(os.getenv('FIREBASE_CREDENTIALS')))
+        # Certifique-se de que a variável FIREBASE_CREDENTIALS na Vercel seja o JSON completo
+        cred_json = json.loads(os.getenv('FIREBASE_CREDENTIALS'))
+        cred = credentials.Certificate(cred_json)
     else:
         cred = credentials.Certificate("firebase.json")
     firebase_admin.initialize_app(cred)
@@ -26,7 +28,7 @@ db = firestore.client()
 app = Flask(__name__)
 CORS(app, origins="*")
 
-app.config['SWAGGER']={
+app.config['SWAGGER'] = {
     'openapi': '3.0.3'
 }
 swagger = Swagger(app, template_file='openapi.yaml')
@@ -51,7 +53,8 @@ def login():
     if dados.get("usuario") == adm_usuario and dados.get("senha") == adm_senha:
         payload = {
             "usuario": adm_usuario,
-            "exp": datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+            # Uso de timezone-aware datetime para evitar avisos de expiração
+            "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=24)
         }
         token = jwt.encode(payload, app.config['SECRET_KEY'], algorithm="HS256")
         return jsonify({"token": token}), 200
@@ -59,7 +62,7 @@ def login():
     return jsonify({"erro": "Credenciais incorretas"}), 401
 
 # ========================================================================
-#   ROTA GET
+#   LISTAGEM DE ALUNOS
 # ========================================================================
 @app.route("/alunos", methods=['GET'])
 @token_obrigatorio
@@ -69,10 +72,11 @@ def listar_alunos():
         lista = [doc.to_dict() for doc in alunos_ref]
         return jsonify(lista), 200
     except Exception as e:
-        return jsonify({"erro": f"Erro ao listar: {str(e)}"}), 500
+        print(f"Erro ao listar: {e}")
+        return jsonify({"erro": "Erro ao carregar lista de alunos"}), 500
 
 # ========================================================================
-#   APLICAÇÃO 1: CATRACA
+#   CATRACA (ACESSO)
 # ========================================================================
 @app.route("/catraca", methods=['POST'])
 def consultar_acesso():
@@ -107,10 +111,11 @@ def consultar_acesso():
             }), 403
 
     except Exception as e:
+        print(f"Erro na catraca: {e}")
         return jsonify({"status": "ERRO_SISTEMA", "mensagem": "Falha no banco de dados."}), 503
 
 # ========================================================================
-#   APLICAÇÃO 3: FRONTEND (CADASTRAR)
+#   CADASTRO (POST) - Proteção contra duplicatas e Auto-ID
 # ========================================================================
 @app.route("/alunos", methods=['POST'])
 @token_obrigatorio
@@ -121,33 +126,21 @@ def cadastrar_aluno():
    
     try:
         cpf_entrada = str(dados.get("cpf")).strip()
-        
-        # Bloqueia se houver letras
-        if any(char.isalpha() for char in cpf_entrada):
-            return jsonify({"erro": "CPF inválido. Não pode conter letras."}), 400
-
-        # Limpa para ter apenas números (ex: 12345678901)
         cpf_limpo = ''.join(filter(str.isdigit, cpf_entrada))
 
         if len(cpf_limpo) != 11:
             return jsonify({"erro": "CPF deve conter 11 números."}), 400
 
-        # --- LÓGICA DE UNICIDADE ---
-        # Busca no Firestore se já existe algum documento com esse CPF exato
-        conferir_cpf = db.collection('alunos').where('cpf', '==', cpf_limpo).get()
-        
-        if len(conferir_cpf) > 0:
-            # Se encontrar algo, ele impede o cadastro. 
-            # Se o aluno tivesse sido deletado antes, o 'len' seria 0 e ele passaria.
-            return jsonify({
-                "erro": "Este CPF já está cadastrado no sistema. Exclua o cadastro anterior para cadastrar novamente."
-            }), 409 
+        # Verifica se CPF já existe
+        existente = db.collection('alunos').where('cpf', '==', cpf_limpo).get()
+        if len(existente) > 0:
+            return jsonify({"erro": "Este CPF já está cadastrado no sistema."}), 409
 
-        # --- PROSSEGUE COM O CADASTRO ---
+        # Lógica de ID Incremental
         contador_ref = db.collection('contador').document('controle_de_id')
         contador_doc = contador_ref.get()
-        ultimo_id = contador_doc.to_dict().get('ultimo_id', 0) if contador_doc.exists else 0
        
+        ultimo_id = contador_doc.to_dict().get('ultimo_id', 0) if contador_doc.exists else 0
         novo_id = ultimo_id + 1
         contador_ref.set({'ultimo_id': novo_id})
 
@@ -157,56 +150,14 @@ def cadastrar_aluno():
             "cpf": cpf_limpo,
             "status": str(dados.get("status", "ATIVO")).upper()
         })
-
         return jsonify({"mensagem": "Aluno salvo com sucesso!", "id": novo_id}), 201
 
     except Exception as e:
-        return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
+        print(f"Erro no POST alunos: {e}")
+        return jsonify({"erro": "Erro interno ao cadastrar aluno"}), 500
 
 # ========================================================================
-#   ATUALIZAÇÃO (PUT)
-# ========================================================================
-# ========================================================================
-#   CADASTRO (POST) - Proteção contra duplicatas
-# ========================================================================
-@app.route("/alunos", methods=['POST'])
-@token_obrigatorio
-def cadastrar_aluno():
-    dados = request.get_json()
-    if not dados or 'cpf' not in dados or 'nome' not in dados:
-        return jsonify({"erro": "Dados incompletos."}), 400
-   
-    try:
-        cpf_entrada = str(dados.get("cpf")).strip()
-        cpf_limpo = ''.join(filter(str.isdigit, cpf_entrada))
-
-        if len(cpf_limpo) != 11:
-            return jsonify({"erro": "CPF deve conter 11 números."}), 400
-
-        # VERIFICAÇÃO: Se o CPF já existe em qualquer lugar
-        existente = db.collection('alunos').where('cpf', '==', cpf_limpo).get()
-        if len(existente) > 0:
-            return jsonify({"erro": "Este CPF já está cadastrado em outro aluno."}), 409
-
-        # Prossegue com o cadastro normal
-        contador_ref = db.collection('contador').document('controle_de_id')
-        contador_doc = contador_ref.get()
-        ultimo_id = contador_doc.to_dict().get('ultimo_id', 0) if contador_doc.exists else 0
-        novo_id = ultimo_id + 1
-        contador_ref.set({'ultimo_id': novo_id})
-
-        db.collection('alunos').add({
-            "id": int(novo_id),
-            "nome": str(dados.get("nome")).strip(),
-            "cpf": cpf_limpo,
-            "status": str(dados.get("status", "ATIVO")).upper()
-        })
-        return jsonify({"mensagem": "Aluno salvo!", "id": novo_id}), 201
-    except Exception as e:
-        return jsonify({"erro": str(e)}), 500
-
-# ========================================================================
-#   EDIÇÃO (PUT) 
+#   EDIÇÃO TOTAL (PUT)
 # ========================================================================
 @app.route("/alunos/<int:id>", methods=['PUT'])
 @token_obrigatorio
@@ -214,24 +165,21 @@ def atualizar_aluno_total(id):
     dados = request.get_json()
     try:
         cpf_novo = ''.join(filter(str.isdigit, str(dados.get("cpf"))))
-        
-        # 1. Busca o aluno que estamos editando
-        docs = db.collection('alunos').where('id', '==', int(id)).get()
+       
+        # 1. Busca o aluno pelo campo 'id' numérico
+        docs = db.collection('alunos').where('id', '==', int(id)).limit(1).get()
         if not docs:
             return jsonify({"erro": "Aluno não encontrado"}), 404
-        
+       
         aluno_atual_ref = docs[0].reference
 
-        # 2. VERIFICAÇÃO DE SEGURANÇA:
-        # Busca se esse "novo CPF" já pertence a OUTRO aluno (ID diferente)
+        # 2. Verifica se o novo CPF já pertence a OUTRO aluno
         outros_com_mesmo_cpf = db.collection('alunos').where('cpf', '==', cpf_novo).get()
-        
         for doc in outros_com_mesmo_cpf:
             if doc.to_dict().get('id') != int(id):
-                # Se achou alguém com esse CPF e o ID não é o mesmo que estou editando...
-                return jsonify({"erro": "Erro: Já existe outro aluno cadastrado com este CPF."}), 409
+                return jsonify({"erro": "Já existe outro aluno com este CPF."}), 409
 
-        # 3. Se passou pela verificação, atualiza
+        # 3. Atualiza
         aluno_atual_ref.update({
             "nome": str(dados.get("nome")).strip(),
             "cpf": cpf_novo,
@@ -240,96 +188,49 @@ def atualizar_aluno_total(id):
         return jsonify({"mensagem": "Aluno atualizado com sucesso!"}), 200
 
     except Exception as e:
-        return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
+        print(f"Erro no PUT alunos: {e}")
+        return jsonify({"erro": "Erro ao atualizar registro"}), 500
 
-# ========================================================================
-#   ATUALIZAÇÃO PARCIAL (PATCH)
-# ========================================================================
-
-@app.route("/alunos/<int:id>", methods=['PATCH'])
-@token_obrigatorio
-def atualizar_aluno_parcial(id):
-    dados = request.get_json()
-    try:
-        # 1. Busca o aluno que está sendo editado
-        docs = db.collection('alunos').where('id', '==', int(id)).limit(1).get()
-        if not docs:
-            return jsonify({"erro": "Aluno não encontrado"}), 404
-       
-        doc_ref = docs[0].reference
-        update_aluno = {}
-
-        # 2. Se o CPF estiver sendo alterado, verifica se já existe em outro registro
-        if 'cpf' in dados:
-            cpf_novo = ''.join(filter(str.isdigit, str(dados['cpf'])))
-            
-            # Validação de tamanho
-            if len(cpf_novo) != 11:
-                return jsonify({"erro": "CPF deve conter 11 números."}), 400
-
-            # Busca se esse CPF já pertence a OUTRO ID
-            outros_com_cpf = db.collection('alunos').where('cpf', '==', cpf_novo).get()
-            for doc in outros_com_cpf:
-                if doc.to_dict().get('id') != int(id):
-                    return jsonify({"erro": "Erro: Este CPF já está em uso por outro aluno."}), 409
-            
-            update_aluno['cpf'] = cpf_novo
-
-        # 3. Processa os demais campos
-        if 'nome' in dados: 
-            update_aluno['nome'] = str(dados['nome']).strip()
-        if 'status' in dados: 
-            update_aluno['status'] = str(dados['status']).upper()
-       
-        # 4. Executa a atualização apenas se houver campos para mudar
-        if update_aluno:
-            doc_ref.update(update_aluno)
-            return jsonify({"mensagem": "Campos atualizados com sucesso!"}), 200
-        else:
-            return jsonify({"mensagem": "Nenhuma alteração enviada."}), 200
-
-    except Exception as e:
-        return jsonify({"erro": f"Erro no PATCH: {str(e)}"}), 500
 # ========================================================================
 #   EXCLUIR (DELETE)
 # ========================================================================
 @app.route("/alunos/deletar", methods=['DELETE'])
 @token_obrigatorio
 def deletar_aluno():
-    dados = request.get_json()
-    cpf_para_excluir = dados.get("cpf")
-    busca = db.collection('alunos').where('cpf', '==', cpf_para_excluir).get()
+    try:
+        dados = request.get_json()
+        cpf_para_excluir = dados.get("cpf")
+        if not cpf_para_excluir:
+            return jsonify({"erro": "CPF não informado"}), 400
 
-    achou = False
-    for doc in busca:
-        doc.reference.delete()
-        achou = True
+        busca = db.collection('alunos').where('cpf', '==', str(cpf_para_excluir)).get()
 
-    if not achou:
-        return jsonify({"erro": "Não encontrado"}), 404
+        achou = False
+        for doc in busca:
+            doc.reference.delete()
+            achou = True
 
-    return jsonify({"mensagem": "Excluído!"}), 200
+        if not achou:
+            return jsonify({"erro": "Aluno não encontrado para exclusão"}), 404
+
+        return jsonify({"mensagem": "Excluído com sucesso!"}), 200
+    except Exception as e:
+        print(f"Erro no DELETE: {e}")
+        return jsonify({"erro": "Erro ao deletar aluno"}), 500
 
 # ========================================================================
-#   ERROS CUSTOMIZADOS (ORIGINAIS)
+#   TRATAMENTO DE ERROS
 # ========================================================================
 @app.errorhandler(500)
 def erro_interno(e):
     return jsonify({
         "status": "OFFLINE",
-        "erro": "Erro interno no servidor ou banco de dados.",
-        "mensagem": "Verifique o Firebase."
-    }), 500
-
-@app.errorhandler(Exception)
-def lidar_com_excecao_generica(e):
-    return jsonify({
-        "status": "ERRO",
-        "erro": str(e),
-        "mensagem": "A requisição falhou."
+        "erro": "Erro interno no servidor.",
+        "mensagem": "Verifique os logs do Firebase/Vercel."
     }), 500
 
 if __name__ == '__main__':
+    # Rodar localmente
     app.run(debug=True)
 
 
