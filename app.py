@@ -73,31 +73,31 @@ def login():
 @app.route("/catraca", methods=['POST'])
 def consultar_acesso():
     try:
+        # Tenta ler o JSON enviado
         dados = request.get_json()
         
-        # 1. Validação se o JSON ou o campo CPF existem
+        # 1. Validação de entrada
         if not dados or "cpf" not in dados:
-            return jsonify({"erro": "Corpo da requisição inválido ou CPF ausente"}), 400
+            return jsonify({"erro": "CPF não informado no corpo da requisição"}), 400
             
-        # 2. Tratamento do CPF (remove espaços e garante que é string)
         cpf_recebido = str(dados.get("cpf")).strip()
 
-        # 3. Busca no Firestore
-        # Importante: Onde está 'cpf', deve ser exatamente o nome do campo no seu banco
+        # 2. Busca no Firebase
+        # Tentamos a conexão aqui. Se o banco estiver fora, ele pula para o 'except'
         resultado_busca = db.collection('alunos').where('cpf', '==', cpf_recebido).get()
 
         aluno_encontrado = None
         for item in resultado_busca:
             aluno_encontrado = item.to_dict()
 
-        # 4. Verifica se o aluno existe
+        # 3. Se não encontrar o aluno, retorna 404 de forma limpa (não é erro de sistema)
         if not aluno_encontrado:
             return jsonify({
                 "status": "BLOQUEADO", 
-                "mensagem": "CPF não cadastrado no sistema."
+                "mensagem": "CPF não cadastrado"
             }), 404
 
-        # 5. Retorno de Sucesso
+        # 4. Retorno de sucesso com os dados do aluno
         return jsonify({
             "nome": aluno_encontrado.get("nome"),
             "status": aluno_encontrado.get("status"),
@@ -105,23 +105,15 @@ def consultar_acesso():
         }), 200
 
     except Exception as e:
-        # Esse print vai aparecer no seu terminal do VS Code. 
-        # Ele te dirá exatamente QUAL erro está acontecendo (Ex: erro de conexão, erro de digitação, etc)
-        print(f"ERRO NA CATRACA: {e}")
+        # Este log aparece no seu terminal para você saber o que houve
+        print(f"ERRO DE CONEXÃO/SISTEMA: {e}")
         
+        # SÓ aqui ele retorna a mensagem de sistema offline/erro de banco
         return jsonify({
             "status": "ERRO_SISTEMA",
-            "mensagem": "Falha na comunicação com o banco de dados.",
-            "detalhe": str(e)
-        }), 500
-
-    except Exception as e:
-        # Caso o Firebase esteja offline ou a internet do servidor caia
-        return jsonify({
-            "status": "ERRO_SISTEMA",
-            "mensagem": "Sistema de autenticação temporariamente offline.",
-            "detalhe": "Timeout ou falha de rede"
-        }), 503  # 503 significa 'Serviço Indisponível'
+            "mensagem": "Sistema temporariamente offline ou falha de comunicação.",
+            "detalhe": "Verifique a conexão com o Firebase"
+        }), 503
 
 # ========================================================================
 #   APLICAÇÃO 3: FRONTEND
