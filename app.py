@@ -182,29 +182,34 @@ def cadastrar_aluno():
 def atualizar_aluno_total(id):
     dados = request.get_json()
     
-    # Validação rigorosa: No PUT todos os campos são obrigatórios
     if not dados or not all(k in dados for k in ("nome", "cpf", "status")):
-        return jsonify({"erro": "Dados incompletos para atualização total (PUT)."}), 400
+        return jsonify({"erro": "Dados incompletos para atualização."}), 400
 
     try:
-        # Busca garantindo que o ID seja tratado como INT
-        docs = db.collection('alunos').where('id', '==', int(id)).limit(1).get()
+        # 1. Garante a limpeza do CPF também na edição
+        cpf_limpo = ''.join(filter(str.isdigit, str(dados.get("cpf"))))
+        
+        # 2. Busca o documento que contém o campo 'id' igual ao ID da URL
+        # Importante: o campo no Firestore deve ser um Number
+        docs = db.collection('alunos').where('id', '==', int(id)).get()
 
         if not docs:
-            return jsonify({"erro": "Aluno não encontrado"}), 404
+            return jsonify({"erro": f"Aluno com ID {id} não encontrado"}), 404
         
+        # Pega a referência do primeiro documento encontrado
         doc_ref = docs[0].reference 
 
-        # Atualiza o documento forçando os tipos corretos
+        # 3. Atualiza os dados
         doc_ref.update({
             "nome": str(dados.get("nome")).strip(),
-            "cpf": str(dados.get("cpf")).strip(),
+            "cpf": cpf_limpo,
             "status": str(dados.get("status")).upper()
         })
         
-        return jsonify({"mensagem": "Aluno atualizado com sucesso (PUT)!"}), 200
+        return jsonify({"mensagem": "Aluno atualizado com sucesso!"}), 200
 
     except Exception as e:
+        print(f"Erro no PUT: {e}") # Log para você ver no terminal/Vercel
         return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
 # ========================================================================
