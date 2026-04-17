@@ -73,46 +73,48 @@ def login():
 @app.route("/catraca", methods=['POST'])
 def consultar_acesso():
     try:
-        # Tenta ler o JSON enviado
         dados = request.get_json()
         
-        # 1. Validação de entrada
         if not dados or "cpf" not in dados:
-            return jsonify({"erro": "CPF não informado no corpo da requisição"}), 400
+            return jsonify({"erro": "CPF não informado"}), 400
             
-        cpf_recebido = str(dados.get("cpf")).strip()
+        # Limpa o CPF (remove pontos, traços e espaços)
+        cpf_recebido = ''.join(filter(str.isdigit, str(dados.get("cpf"))))
 
-        # 2. Busca no Firebase
-        # Tentamos a conexão aqui. Se o banco estiver fora, ele pula para o 'except'
-        resultado_busca = db.collection('alunos').where('cpf', '==', cpf_recebido).get()
+        # Busca limitada a 1 resultado para performance
+        resultado_busca = db.collection('alunos').where('cpf', '==', cpf_recebido).limit(1).get()
 
-        aluno_encontrado = None
+        aluno_doc = None
         for item in resultado_busca:
-            aluno_encontrado = item.to_dict()
+            aluno_doc = item.to_dict()
 
-        # 3. Se não encontrar o aluno, retorna 404 de forma limpa (não é erro de sistema)
-        if not aluno_encontrado:
+        if not aluno_doc:
             return jsonify({
                 "status": "BLOQUEADO", 
                 "mensagem": "CPF não cadastrado"
             }), 404
 
-        # 4. Retorno de sucesso com os dados do aluno
-        return jsonify({
-            "nome": aluno_encontrado.get("nome"),
-            "status": aluno_encontrado.get("status"),
-            "mensagem": "Acesso Liberado!"
-        }), 200
+        # VERIFICAÇÃO CRÍTICA: O aluno está ativo?
+        status_aluno = aluno_doc.get("status", "").upper()
+        
+        if status_aluno == "ATIVO":
+            return jsonify({
+                "nome": aluno_doc.get("nome"),
+                "status": "ATIVO",
+                "mensagem": "Acesso Liberado!"
+            }), 200
+        else:
+            return jsonify({
+                "nome": aluno_doc.get("nome"),
+                "status": "BLOQUEADO",
+                "mensagem": f"Acesso negado. Status: {status_aluno}"
+            }), 403 # 403 Forbidden é mais apropriado para bloqueios
 
     except Exception as e:
-        # Este log aparece no seu terminal para você saber o que houve
-        print(f"ERRO DE CONEXÃO/SISTEMA: {e}")
-        
-        # SÓ aqui ele retorna a mensagem de sistema offline/erro de banco
+        print(f"ERRO DE SISTEMA: {e}")
         return jsonify({
             "status": "ERRO_SISTEMA",
-            "mensagem": "Sistema temporariamente offline ou falha de comunicação.",
-            "detalhe": "Verifique a conexão com o Firebase"
+            "mensagem": "Falha na comunicação com o banco de dados."
         }), 503
 
 # ========================================================================
