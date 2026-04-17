@@ -70,28 +70,39 @@ def login():
 #   APLICAÇÃO 1: CATRACA tablet da portaria
 # ========================================================================
 
-@app.route("/catraca", methods=['POST']) # Mudou para POST
+@app.route("/catraca", methods=['POST'])
 def consultar_acesso():
-    dados = request.get_json() # Agora o Flask vai conseguir ler o JSON
-    
-    if not dados or "cpf" not in dados:
-        return jsonify({"erro": "CPF não informado no corpo da requisição"}), 400
+    try:
+        dados = request.get_json()
         
-    cpf_recebido = dados.get("cpf")
+        if not dados or "cpf" not in dados:
+            return jsonify({"erro": "CPF não informado"}), 400
+            
+        cpf_recebido = str(dados.get("cpf")).strip()
 
-    resultado_busca = db.collection('alunos').where('cpf', '==', str(cpf_recebido)).get()
+        # O Firebase SDK não tem um parâmetro 'timeout' direto no .get() 
+        # mas podemos envolver a busca em um bloco de try para capturar falhas de rede
+        resultado_busca = db.collection('alunos').where('cpf', '==', cpf_recebido).get()
 
-    aluno_encontrado = None
-    for item in resultado_busca:
-        aluno_encontrado = item.to_dict()
+        aluno_encontrado = None
+        for item in resultado_busca:
+            aluno_encontrado = item.to_dict()
 
-    if not aluno_encontrado:
-        return jsonify({"status": "BLOQUEADO", "mensagem": "CPF não cadastrado"}), 404
+        if not aluno_encontrado:
+            return jsonify({"status": "BLOQUEADO", "mensagem": "CPF não cadastrado"}), 404
 
-    return jsonify({
-        "nome": aluno_encontrado.get("nome"),
-        "status": aluno_encontrado.get("status")
-    }), 200
+        return jsonify({
+            "nome": aluno_encontrado.get("nome"),
+            "status": aluno_encontrado.get("status")
+        }), 200
+
+    except Exception as e:
+        # Caso o Firebase esteja offline ou a internet do servidor caia
+        return jsonify({
+            "status": "ERRO_SISTEMA",
+            "mensagem": "Sistema de autenticação temporariamente offline.",
+            "detalhe": "Timeout ou falha de rede"
+        }), 503  # 503 significa 'Serviço Indisponível'
 
 # ========================================================================
 #   APLICAÇÃO 3: FRONTEND
@@ -239,6 +250,29 @@ def deletar_aluno():
         return jsonify({"erro": "Não encontrado"}), 404
 
     return jsonify({"mensagem": "Excluído!"}), 200
+
+
+# ========================================================================
+#   ZONA DE ERROS: TRATAMENTO DE EXCEÇÕES PARA EVITAR TRAVAMENTO INFINITO E FORNECER RESPOSTAS ÚTEIS
+# ========================================================================
+
+
+@app.errorhandler(500)
+def erro_interno(e):
+    return jsonify({
+        "status": "OFFLINE",
+        "erro": "Erro interno no servidor ou falha de conexão com o banco de dados.",
+        "mensagem": "Verifique a conexão de rede ou o status do serviço Firebase."
+    }), 500
+
+@app.errorhandler(Exception)
+def lidar_com_excecao_generica(e):
+    # Captura qualquer erro não esperado e evita travamento infinito
+    return jsonify({
+        "status": "ERRO",
+        "erro": str(e),
+        "mensagem": "A requisição falhou. Tente novamente em instantes."
+    }), 500
 
 if __name__ == '__main__':
     app.run(debug=True)
