@@ -70,34 +70,31 @@ def login():
 #   APLICAÇÃO 1: CATRACA tablet da portaria
 # ========================================================================
 
-@app.route("/catraca", methods=['POST'])
+@app.route("/catraca", methods=['GET'])
 def consultar_acesso():
     try:
-        # Tenta ler o JSON enviado
-        dados = request.get_json()
+        # Pega o CPF da URL: /catraca?cpf=12345678901
+        cpf_recebido = request.args.get('cpf')
         
-        # 1. Validação de entrada
-        if not dados or "cpf" not in dados:
-            return jsonify({"erro": "CPF não informado no corpo da requisição"}), 400
+        if not cpf_recebido:
+            return jsonify({"erro": "CPF não informado"}), 400
             
-        cpf_recebido = str(dados.get("cpf")).strip()
+        cpf_recebido = str(cpf_recebido).strip()
 
-        # 2. Busca no Firebase
-        # Tentamos a conexão aqui. Se o banco estiver fora, ele pula para o 'except'
+        # Tenta buscar no Firebase
+        # Se o banco cair aqui, o código pula direto para o 'except' abaixo
         resultado_busca = db.collection('alunos').where('cpf', '==', cpf_recebido).get()
 
         aluno_encontrado = None
         for item in resultado_busca:
             aluno_encontrado = item.to_dict()
 
-        # 3. Se não encontrar o aluno, retorna 404 de forma limpa (não é erro de sistema)
         if not aluno_encontrado:
             return jsonify({
                 "status": "BLOQUEADO", 
                 "mensagem": "CPF não cadastrado"
             }), 404
 
-        # 4. Retorno de sucesso com os dados do aluno
         return jsonify({
             "nome": aluno_encontrado.get("nome"),
             "status": aluno_encontrado.get("status"),
@@ -105,14 +102,12 @@ def consultar_acesso():
         }), 200
 
     except Exception as e:
-        # Este log aparece no seu terminal para você saber o que houve
-        print(f"ERRO DE CONEXÃO/SISTEMA: {e}")
-        
-        # SÓ aqui ele retorna a mensagem de sistema offline/erro de banco
+        # Se cair aqui, é porque o servidor/banco deu erro técnico
+        print(f"ERRO DE SISTEMA: {e}")
         return jsonify({
             "status": "ERRO_SISTEMA",
             "mensagem": "Sistema temporariamente offline ou falha de comunicação.",
-            "detalhe": "Verifique a conexão com o Firebase"
+            "detalhe": "Erro ao conectar com o banco de dados"
         }), 503
 
 # ========================================================================
