@@ -130,23 +130,31 @@ def cadastrar_aluno():
         return jsonify({"erro": "Dados incompletos."}), 400
     
     try:
-        # Limpa espaços e garante que é string
-        cpf_novo = str(dados.get("cpf")).strip()
-
-        # Verifica se tem 11 dígitos e se todos são números
-        if len(cpf_novo) != 11 or not cpf_novo.isdigit():
-            return jsonify({
-                "erro": "CPF inválido. O campo deve conter exatamente 11 dígitos numéricos, sem letras ou símbolos."
-            }), 400
-        # -----------------------------
-
-        # Faz uma busca na coleção 'alunos' onde o campo 'cpf' é igual ao enviado
-        conferir_cpf = db.collection('alunos').where('cpf', '==', cpf_novo).get()
+        cpf_entrada = str(dados.get("cpf")).strip()
         
-        if len(conferir_cpf) > 0:
-            return jsonify({"erro": "Este CPF já está cadastrado no sistema."}), 409 
+        # 1. VALIDAÇÃO DE LETRAS
+        # Se houver qualquer letra no que o usuário digitou, rejeita na hora
+        if any(char.isalpha() for char in cpf_entrada):
+            return jsonify({
+                "erro": "CPF inválido. O campo não pode conter letras, apenas números, pontos e traços."
+            }), 400
 
-        # Lógica do contador automático
+        # 2. LIMPEZA (Saneamento)
+        # Agora que sabemos que não há letras, removemos '.' e '-' para ter o número puro
+        cpf_limpo = ''.join(filter(str.isdigit, cpf_entrada))
+
+        # 3. VALIDAÇÃO DE TAMANHO
+        if len(cpf_limpo) != 11:
+            return jsonify({
+                "erro": "CPF incompleto. Certifique-se de que digitou os 11 números."
+            }), 400
+
+        # 4. VERIFICAÇÃO DE DUPLICIDADE
+        conferir_cpf = db.collection('alunos').where('cpf', '==', cpf_limpo).get()
+        if len(conferir_cpf) > 0:
+            return jsonify({"erro": "Este CPF já está cadastrado."}), 409 
+
+        # 5. GERENCIAMENTO DE ID E INSERÇÃO
         contador_ref = db.collection('contador').document('controle_de_id')
         contador_doc = contador_ref.get()
         
@@ -158,24 +166,16 @@ def cadastrar_aluno():
         contador_ref.set({'ultimo_id': novo_id}) 
 
         db.collection('alunos').add({
-            "id": novo_id,
+            "id": int(novo_id),
             "nome": str(dados.get("nome")).strip(),
-            "cpf": cpf_novo,
-            "status": dados.get("status", "ATIVO") 
+            "cpf": cpf_limpo, # Salva o número puro (ex: 99999999999)
+            "status": str(dados.get("status", "ATIVO")).upper() 
         })
-        return jsonify({"mensagem": "Aluno salvo!", "id": novo_id}), 201
-    except Exception as e:
-        return jsonify({"erro": f"Erro ao salvar no banco: {str(e)}"}), 500
-    
 
-@app.route("/alunos", methods=['GET'])
-@token_obrigatorio
-def listar_todos_alunos():
-    lista = []
-    todos_os_docs = db.collection('alunos').get()
-    for doc in todos_os_docs:
-        lista.append(doc.to_dict())
-    return jsonify(lista), 200
+        return jsonify({"mensagem": "Aluno salvo!", "id": novo_id}), 201
+
+    except Exception as e:
+        return jsonify({"erro": f"Erro interno: {str(e)}"}), 500
 
 @app.route("/alunos/<int:id>", methods=['PUT'])
 @token_obrigatorio
