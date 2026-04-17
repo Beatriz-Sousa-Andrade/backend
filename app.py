@@ -34,7 +34,7 @@ app.config['SWAGGER']={
 swagger=Swagger(app, template_file='openapi.yaml') #template_file é o arquivo onde está a documentação da api, ou seja, o openapi.yaml
 
 app.config['SECRET_KEY'] = os.getenv('SECRET_KEY')
-CORS(app, origins="*")
+
 
 adm_usuario = os.getenv('adm_usuario')
 adm_senha = os.getenv('adm_senha')
